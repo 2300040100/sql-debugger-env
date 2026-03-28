@@ -1,3 +1,17 @@
+---
+title: Sql Debugger Env
+emoji: 🔍
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+tags:
+  - openenv
+  - sql
+  - reinforcement-learning
+license: mit
+---
+
 # SQL Query Debugger — OpenEnv Environment
 
 An OpenEnv-compatible reinforcement learning environment where AI agents
