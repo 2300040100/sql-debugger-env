@@ -156,7 +156,7 @@ must use `COALESCE(bonus, 0)` to treat NULL as zero.
 | POST | `/grader` | Get final score for current episode |
 | POST | `/baseline` | Run baseline agent on all 3 tasks |
 
-Interactive docs available at: `http://your-url/docs`
+Interactive docs available at: `http://Karishma40100-sql-debugger-env.hf.space/docs`
 
 ---
 
@@ -164,7 +164,7 @@ Interactive docs available at: `http://your-url/docs`
 
 ### Option 1 — Run with Docker (recommended)
 ```bash
-git clone https://huggingface.co/spaces/YOUR_USERNAME/sql-debugger-env
+git clone https://huggingface.co/spaces/Karishma40100/sql-debugger-env
 cd sql-debugger-env
 docker build -t sql-debugger-env .
 docker run -p 7860:7860 sql-debugger-env
@@ -172,7 +172,7 @@ docker run -p 7860:7860 sql-debugger-env
 
 ### Option 2 — Run with Python directly
 ```bash
-git clone https://huggingface.co/spaces/YOUR_USERNAME/sql-debugger-env
+git clone https://huggingface.co/spaces/Karishma40100/sql-debugger-env
 cd sql-debugger-env
 pip install -r requirements.txt
 python server/app.py
