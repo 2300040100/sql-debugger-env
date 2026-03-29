@@ -5,7 +5,7 @@
 # When someone visits that URL, FastAPI calls your function and returns the result as JSON.
 #
 # KEY CONCEPT: We keep ONE environment instance per "session" in a dictionary.
-# For this hackathon, one global instance is perfectly fine.
+
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,7 +35,7 @@ app.add_middleware(
 )
 
 # ── One global environment instance ──
-# In production you'd have one per session, but for this hackathon this is fine
+# In production you'd have one per session
 env = SQLDebuggerEnv()
 current_task_id = "task_syntax"  # tracks which task is active
 
@@ -55,7 +55,6 @@ class StepRequest(BaseModel):
 
 # ════════════════════════════════════════════════════════
 # ENDPOINT 1: GET /health
-# Judges ping this to check your server is alive.
 # Must return 200 OK. That's it.
 # ════════════════════════════════════════════════════════
 
@@ -68,7 +67,6 @@ def health():
 # ════════════════════════════════════════════════════════
 # ENDPOINT 2: POST /reset
 # Starts a fresh episode.
-# Judges call this before every evaluation run.
 # ════════════════════════════════════════════════════════
 
 @app.post("/reset")
@@ -136,7 +134,6 @@ def state():
 # ════════════════════════════════════════════════════════
 # ENDPOINT 5: GET /tasks
 # Lists all available tasks with their action schema.
-# Judges use this to discover what your env can do.
 # ════════════════════════════════════════════════════════
 
 @app.get("/tasks")
@@ -158,7 +155,6 @@ def tasks():
 # ════════════════════════════════════════════════════════
 # ENDPOINT 6: POST /grader
 # Runs the grader for the current episode.
-# Judges call this after an episode to get the final score.
 # ════════════════════════════════════════════════════════
 
 @app.post("/grader")
@@ -184,7 +180,6 @@ def grader():
 # ════════════════════════════════════════════════════════
 # ENDPOINT 7: POST /baseline
 # Runs the built-in baseline agent on ALL 3 tasks.
-# Judges use this to verify your baseline scores are reproducible.
 # This runs a simple rule-based agent (not an LLM) as the baseline.
 # ════════════════════════════════════════════════════════
 
