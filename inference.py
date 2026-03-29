@@ -2,16 +2,7 @@
 #
 # This script runs an AI agent (using OpenAI API) against all 3 tasks
 # and prints reproducible scores.
-#
-# Judges will run this exact script to verify your environment works.
-# It must complete without errors and print scores for all 3 tasks.
-#
-# HOW IT WORKS:
-# 1. Connects to your running server (localhost:7860)
-# 2. For each task: resets the env, sends the broken query to GPT, submits the fix
-# 3. Scores the result and prints it
-#
-# Run with: python baseline.py
+
 
 import os
 import json
