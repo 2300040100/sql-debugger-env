@@ -72,23 +72,18 @@ def health():
 # ════════════════════════════════════════════════════════
 
 @app.post("/reset")
-def reset(request: ResetRequest):
-    """
-    Resets the environment and returns the first observation.
-    Send: { "task_id": "task_syntax" }  (or task_logic, task_advanced)
-    Returns: the Observation object as JSON
-    """
+def reset(request: ResetRequest = None):
     global current_task_id
-
-    # Validate task_id
-    if request.task_id not in TASKS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown task_id '{request.task_id}'. Valid options: {list(TASKS.keys())}"
-        )
-
-    current_task_id = request.task_id
-    observation = env.reset(task_id=request.task_id)
+    
+    task_id = "task_syntax"
+    if request and request.task_id:
+        task_id = request.task_id
+    
+    if task_id not in TASKS:
+        task_id = "task_syntax"
+    
+    current_task_id = task_id
+    observation = env.reset(task_id=task_id)
     return observation.dict()
 
 
