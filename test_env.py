@@ -1,5 +1,5 @@
-# test_env.py  ← run this to verify your environment works
-# Run with: python test_env.py
+# test_env.py  ← to verify your environment works
+
 
 from env import SQLDebuggerEnv, Action
 
