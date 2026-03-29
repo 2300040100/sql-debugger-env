@@ -144,7 +144,6 @@ class SQLDebuggerEnv:
     # ─────────────────────────────────────────────────────────────
     # _compute_reward() — The scoring engine
     # PRIVATE method (underscore prefix = internal use only)
-    # This is what makes your environment great — partial credit!
     # ─────────────────────────────────────────────────────────────
     def _compute_reward(self, query: str) -> Reward:
         """
