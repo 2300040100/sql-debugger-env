@@ -13,4 +13,8 @@ dependencies = [
     "pydantic",
     "openai",
     "requests",
+    "openenv>=0.1.0",
 ]
+
+[project.scripts]
+server = "server.app:main"
