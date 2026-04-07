@@ -159,23 +159,28 @@ def tasks():
 
 @app.post("/grader")
 def grader():
-    """
-    Returns the final grader score for the current episode.
-    Call this after your episode is done.
-    Returns: { "task_id": ..., "score": 0.0-1.0, "breakdown": {...} }
-    """
+    # Clamp score to strictly between 0 and 1
+    raw_score = env.best_score
+    
+    # Ensure score is strictly between 0 and 1
+    if raw_score <= 0.0:
+        clamped_score = 0.01
+    elif raw_score >= 1.0:
+        clamped_score = 0.99
+    else:
+        clamped_score = raw_score
+    
     return {
         "task_id": current_task_id,
-        "score": env.best_score,
+        "score": clamped_score,
         "difficulty": TASKS[current_task_id]["difficulty"],
         "steps_taken": env.step_count,
         "breakdown": {
-            "best_score_achieved": env.best_score,
+            "best_score_achieved": clamped_score,
             "total_attempts": len(env.episode_actions),
-            "solved": env.best_score == 1.0,
+            "solved": raw_score >= 1.0,
         }
     }
-
 
 # ════════════════════════════════════════════════════════
 # ENDPOINT 7: POST /baseline
