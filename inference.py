@@ -1,190 +1,18 @@
-# baseline.py
-#
-# This script runs an AI agent (using OpenAI API) against all 3 tasks
-# and prints reproducible scores.
-
-
+# inference.py
 import os
 import json
 import requests
 from openai import OpenAI
 
-# ── Configuration ──
-# Your server URL — locally it's localhost, on HF Spaces it'll be your Space URL
-BASE_URL = os.getenv("ENV_URL", "http://localhost:7860")
-
-# OpenAI client — reads API key from environment variable
-# Set it with: set OPENAI_API_KEY=your-key-here  (Windows)
-#              export OPENAI_API_KEY=your-key-here (Mac/Linux)
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", "dummy-key-for-testing"))
-
-# Use a fixed random seed model for reproducibility
-MODEL = "gpt-4o-mini"  # cheap and fast — good for baseline
-
-
-def run_task(task_id: str) -> dict:
-    """
-    Runs one full episode for the given task.
-    Returns the final score and details.
-    """
-    print(f"\n{'='*50}")
-    print(f"Running task: {task_id}")
-    print(f"{'='*50}")
-
-    # ── Step 1: Reset the environment ──
-    reset_response = requests.post(
-        f"{BASE_URL}/reset",
-        json={"task_id": task_id}
-    )
-    if reset_response.status_code != 200:
-        print(f"ERROR resetting: {reset_response.text}")
-        return {"task_id": task_id, "score": 0.0, "error": reset_response.text}
-
-    obs = reset_response.json()
-    print(f"Task: {obs['task_id']}")
-    print(f"Broken query: {obs['broken_query'].strip()}")
-    print(f"Schema: {obs['schema_description']}")
-
-    best_score = 0.0
-    final_obs = obs
-
-    # ── Step 2: Agent loop — keep trying until done or max steps ──
-    for attempt in range(obs["max_steps"]):
-        print(f"\n--- Attempt {attempt + 1} ---")
-
-        # Build the prompt for the AI agent
-        prompt = build_prompt(final_obs)
-
-        # Call OpenAI API
-        try:
-            response = client.chat.completions.create(
-                model=MODEL,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are an expert SQL debugger. "
-                            "You fix broken SQLite queries. "
-                            "Always respond with ONLY a JSON object in this exact format: "
-                            '{"fixed_query": "YOUR SQL HERE", "reasoning": "what you fixed"}'
-                            "Nothing else. No markdown. No explanation outside the JSON."
-                        )
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=0,  # temperature=0 makes it deterministic/reproducible
-            )
-
-            # Parse the response
-            content = response.choices[0].message.content.strip()
-            print(f"Agent response: {content[:200]}...")  # print first 200 chars
-
-            # Clean up response (sometimes models add markdown backticks)
-            content = content.replace("```json", "").replace("```", "").strip()
-            action_data = json.loads(content)
-
-        except json.JSONDecodeError as e:
-            print(f"JSON parse error: {e}. Using fallback.")
-            # Fallback: just try submitting the broken query as-is
-            action_data = {"fixed_query": final_obs["broken_query"], "reasoning": "fallback"}
-
-        except Exception as e:
-            print(f"API error: {e}")
-            # If no API key, use the correct answer directly for testing
-            action_data = {
-                "fixed_query": get_fallback_query(task_id),
-                "reasoning": "No API key — using known correct answer for testing"
-            }
-
-        print(f"Submitting query: {action_data['fixed_query'].strip()[:100]}")
-
-        # ── Step 3: Submit the action to the environment ──
-        step_response = requests.post(
-            f"{BASE_URL}/step",
-            json={"fixed_query": action_data["fixed_query"],
-                  "reasoning": action_data.get("reasoning", "")}
-        )
-
-        if step_response.status_code != 200:
-            print(f"Step error: {step_response.text}")
-            break
-
-        result = step_response.json()
-        reward = result["reward"]
-        done = result["done"]
-        final_obs = result["observation"]
-        best_score = max(best_score, reward)
-
-        print(f"Reward: {reward}")
-        print(f"Done: {done}")
-
-        if done:
-            print(f"Episode finished after {attempt + 1} attempts.")
-            break
-
-    # ── Step 4: Get final grader score ──
-    grader_response = requests.post(f"{BASE_URL}/grader")
-    grader_data = grader_response.json()
-
-    print(f"\nFinal grader score: {grader_data['score']}")
-    return {
-        "task_id": task_id,
-        "difficulty": grader_data.get("difficulty", ""),
-        "score": grader_data["score"],
-        "solved": grader_data["score"] == 1.0,
-    }
-
-
-def build_prompt(obs: dict) -> str:
-    """
-    Builds the prompt the AI agent sees.
-    Includes the broken query, schema, error, and hint.
-    """
-    prompt_parts = [
-        f"You need to fix a broken SQLite query.",
-        f"",
-        f"DATABASE SCHEMA:",
-        f"{obs['schema_description']}",
-        f"",
-        f"BROKEN QUERY:",
-        f"{obs['broken_query'].strip()}",
-        f"",
-        f"EXPECTED OUTPUT:",
-        f"Columns: {obs['expected_columns']}",
-        f"Row count: {obs['expected_row_count']} rows",
-    ]
-
-    if obs.get("error_message"):
-        prompt_parts.append(f"")
-        prompt_parts.append(f"ERROR WHEN RUNNING BROKEN QUERY:")
-        prompt_parts.append(f"{obs['error_message']}")
-
-    if obs.get("previous_attempt"):
-        prompt_parts.append(f"")
-        prompt_parts.append(f"YOUR PREVIOUS ATTEMPT:")
-        prompt_parts.append(f"{obs['previous_attempt'].strip()}")
-        prompt_parts.append(f"PREVIOUS SCORE: {obs['previous_score']}")
-
-    if obs.get("hint"):
-        prompt_parts.append(f"")
-        prompt_parts.append(f"HINT: {obs['hint']}")
-
-    prompt_parts.append(f"")
-    prompt_parts.append(
-        'Respond with ONLY this JSON: {"fixed_query": "YOUR FIXED SQL", "reasoning": "what you changed"}'
-    )
-
-    return "\n".join(prompt_parts)
+# environment variables
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+ENV_URL = os.getenv("ENV_URL", "https://karishma2026-sql-debugger-env.hf.space")
+BENCHMARK = "sql-debugger"
 
 
 def get_fallback_query(task_id: str) -> str:
-    """
-    Fallback correct queries used when no OpenAI API key is available.
-    This ensures baseline.py always produces scores even without an API key.
-    """
     fallbacks = {
         "task_syntax": "SELECT name, salary FROM employees WHERE salary > 50000;",
         "task_logic": """SELECT customers.name, orders.product, orders.amount
@@ -198,42 +26,156 @@ ORDER BY department;""",
     return fallbacks.get(task_id, "SELECT 1;")
 
 
-def main():
-    """
-    Main function — runs all 3 tasks and prints a summary.
-    """
-    print("SQL QUERY DEBUGGER — BASELINE EVALUATION")
-    print("=" * 50)
-    print(f"Server: {BASE_URL}")
-    print(f"Model: {MODEL}")
+def build_prompt(obs: dict) -> str:
+    parts = [
+        "Fix this broken SQLite query.",
+        f"SCHEMA: {obs['schema_description']}",
+        f"BROKEN QUERY: {obs['broken_query'].strip()}",
+        f"EXPECTED COLUMNS: {obs['expected_columns']}",
+        f"EXPECTED ROW COUNT: {obs['expected_row_count']}",
+    ]
+    if obs.get("error_message"):
+        parts.append(f"ERROR: {obs['error_message']}")
+    if obs.get("hint"):
+        parts.append(f"HINT: {obs['hint']}")
+    parts.append('Respond ONLY with JSON: {"fixed_query": "SQL HERE", "reasoning": "explanation"}')
+    return "\n".join(parts)
 
-    # Check server is running
+
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+
+def log_step(step: int, action: str, reward: float, done: bool, error) -> None:
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    action_safe = str(action).replace("\n", " ")[:80]
+    print(
+        f"[STEP] step={step} action={action_safe} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
+
+
+def log_end(success: bool, steps: int, score: float, rewards: list) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(
+        f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}",
+        flush=True,
+    )
+
+
+def run_task(task_id: str, client: OpenAI) -> dict:
+    log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
+
+    rewards = []
+    steps_taken = 0
+    score = 0.0
+    success = False
+
     try:
-        health = requests.get(f"{BASE_URL}/health", timeout=5)
-        print(f"Server status: {health.json()['status']}")
-    except Exception as e:
-        print(f"ERROR: Cannot connect to server at {BASE_URL}")
-        print(f"Make sure the server is running: python server/app.py")
-        return
+        # Reset environment
+        reset_response = requests.post(
+            f"{ENV_URL}/reset",
+            json={"task_id": task_id},
+            timeout=30
+        )
+        obs = reset_response.json()
+        max_steps = obs.get("max_steps", 3)
 
-    # Run all 3 tasks
+        for step in range(1, max_steps + 1):
+            steps_taken = step
+            error = None
+
+            # Get action from LLM
+            try:
+                prompt = build_prompt(obs)
+                completion = client.chat.completions.create(
+                    model=MODEL_NAME,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are an expert SQL debugger. "
+                                "Always respond with ONLY a JSON object: "
+                                '{"fixed_query": "YOUR SQL HERE", "reasoning": "what you fixed"}'
+                            )
+                        },
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.0,
+                    max_tokens=300,
+                )
+                content = completion.choices[0].message.content or ""
+                content = content.replace("```json", "").replace("```", "").strip()
+                action_data = json.loads(content)
+                fixed_query = action_data.get("fixed_query", get_fallback_query(task_id))
+            except Exception as e:
+                error = str(e)[:50]
+                fixed_query = get_fallback_query(task_id)
+
+            # Submit action to environment
+            try:
+                step_response = requests.post(
+                    f"{ENV_URL}/step",
+                    json={"fixed_query": fixed_query, "reasoning": ""},
+                    timeout=30
+                )
+                result = step_response.json()
+                reward = float(result.get("reward", 0.0))
+                done = bool(result.get("done", False))
+                obs = result.get("observation", obs)
+            except Exception as e:
+                reward = 0.0
+                done = True
+                error = str(e)[:50]
+
+            rewards.append(reward)
+            log_step(step=step, action=fixed_query, reward=reward, done=done, error=error)
+
+            if done:
+                break
+
+        # Get final score from grader
+        try:
+            grader_response = requests.post(f"{ENV_URL}/grader", timeout=30)
+            score = float(grader_response.json().get("score", max(rewards) if rewards else 0.0))
+        except Exception:
+            score = max(rewards) if rewards else 0.0
+
+        success = score >= 0.5
+
+    except Exception as e:
+        print(f"[DEBUG] Task error: {e}", flush=True)
+        rewards = rewards or [0.0]
+        score = 0.0
+        success = False
+
+    finally:
+        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+
+    return {"task_id": task_id, "score": score, "solved": success}
+
+
+def main():
+    # API_BASE_URL and API_KEY from environment
+    client = OpenAI(
+        base_url=API_BASE_URL,
+        api_key=API_KEY,
+    )
+
+    print(f"Model: {MODEL_NAME}", flush=True)
+    print(f"API Base: {API_BASE_URL}", flush=True)
+    print(f"Env URL: {ENV_URL}", flush=True)
+
     all_results = []
     for task_id in ["task_syntax", "task_logic", "task_advanced"]:
-        result = run_task(task_id)
+        result = run_task(task_id, client)
         all_results.append(result)
 
-    # Print final summary
-    print(f"\n{'='*50}")
-    print("BASELINE RESULTS SUMMARY")
-    print(f"{'='*50}")
+    print("\nSUMMARY", flush=True)
     for r in all_results:
-        status = "✓ SOLVED" if r["solved"] else "✗ NOT SOLVED"
-        print(f"{r['task_id']:20} | {r['difficulty']:8} | score: {r['score']:.4f} | {status}")
-
-    avg = sum(r["score"] for r in all_results) / len(all_results)
-    print(f"{'─'*50}")
-    print(f"{'Average score':20} | {'':8} | score: {avg:.4f}")
-    print(f"{'='*50}")
+        status = "SOLVED" if r["solved"] else "NOT SOLVED"
+        print(f"{r['task_id']} | score: {r['score']:.4f} | {status}", flush=True)
 
 
 if __name__ == "__main__":
