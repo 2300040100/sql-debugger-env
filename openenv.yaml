@@ -14,7 +14,16 @@ tasks:
     name: "Fix logic bug"
     difficulty: medium
   - id: task_advanced
-    name: "Fix NULL and subquery bug"
+    name: "Fix NULL and aggregation bug"
+    difficulty: hard
+  - id: task_boundary
+    name: "Fix boundary condition bug"
+    difficulty: easy
+  - id: task_groupby
+    name: "Fix missing GROUP BY"
+    difficulty: medium
+  - id: task_having
+    name: "Fix WHERE vs HAVING bug"
     difficulty: hard
 observation_space:
   type: object

@@ -168,7 +168,7 @@ def main():
     print(f"Env URL: {ENV_URL}", flush=True)
 
     all_results = []
-    for task_id in ["task_syntax", "task_logic", "task_advanced"]:
+    for task_id in ["task_syntax", "task_boundary", "task_logic", "task_groupby", "task_advanced", "task_having"]:
         result = run_task(task_id, client)
         all_results.append(result)
 

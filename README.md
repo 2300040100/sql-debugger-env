@@ -218,6 +218,9 @@ Scores produced by running `python baseline.py` with deterministic fallback agen
 | task_syntax | Easy | 1.0000 |
 | task_logic | Medium | 1.0000 |
 | task_advanced | Hard | 1.0000 |
+| task_boundary | Easy | 1.0000 |
+| task_groupby | Medium | 1.0000 |
+| task_having | Hard | 1.0000 |
 | **Average** | | **1.0000** |
 
 These scores are fully reproducible — the grader is deterministic

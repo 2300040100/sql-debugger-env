@@ -26,7 +26,6 @@ class SQLDebuggerEnv:
     """
 
     def __init__(self):
-        # These will be set properly when reset() is called
         self.task_id: str = "task_syntax"
         self.task: dict = {}
         self.step_count: int = 0
@@ -34,29 +33,20 @@ class SQLDebuggerEnv:
         self.db_connection: Optional[sqlite3.Connection] = None
         self.previous_attempt: Optional[str] = None
         self.previous_score: Optional[float] = None
-        self.best_score: float = 0.0        # tracks best score across all steps
-        self.episode_actions: list = []     # stores all actions taken this episode
+        self.best_score: float = 0.0
+        self.episode_actions: list = []
 
-    # ─────────────────────────────────────────────────────────────
-    # reset() — Start a brand new episode
-    # Called at the beginning of every episode.
-    # Returns the first Observation the agent will see.
-    # ─────────────────────────────────────────────────────────────
     def reset(self, task_id: str = "task_syntax") -> Observation:
         """
         Resets the environment for a new episode.
         Creates a fresh SQLite database with the task's tables and data.
         Returns the starting Observation.
         """
-        # Validate the task_id
         if task_id not in TASKS:
             raise ValueError(f"Unknown task_id '{task_id}'. Choose from: {list(TASKS.keys())}")
 
-        # Store the task
         self.task_id = task_id
         self.task = TASKS[task_id]
-
-        # Reset all tracking variables
         self.step_count = 0
         self.done = False
         self.previous_attempt = None
@@ -64,26 +54,15 @@ class SQLDebuggerEnv:
         self.best_score = 0.0
         self.episode_actions = []
 
-        # Close any old database connection first
         if self.db_connection:
             self.db_connection.close()
 
-        # Create a FRESH in-memory SQLite database
-        # ":memory:" means it lives in RAM — fast, no files
         self.db_connection = sqlite3.connect(":memory:")
-
-        # Run the setup SQL to create tables and insert data
         self.db_connection.executescript(self.task["setup_sql"])
         self.db_connection.commit()
 
-        # Return the starting observation
         return self._build_observation()
 
-    # ─────────────────────────────────────────────────────────────
-    # step() — Agent sends a fixed query, we score it
-    # This is called every time the agent makes an attempt.
-    # Returns: (observation, reward_value, done, info_dict)
-    # ─────────────────────────────────────────────────────────────
     def step(self, action: Action) -> Tuple[Observation, float, bool, dict]:
         """
         Runs the agent's fixed_query against the SQLite database.
@@ -92,28 +71,22 @@ class SQLDebuggerEnv:
         if self.done:
             raise RuntimeError("Episode is done. Call reset() to start a new episode.")
 
-        # Save this attempt for the next observation
         self.previous_attempt = action.fixed_query
         self.episode_actions.append(action)
 
-        # Score the agent's query
         reward = self._compute_reward(action.fixed_query)
         self.previous_score = reward.total
 
-        # Track the best score this episode
         self.best_score = max(self.best_score, reward.total)
 
-        # Advance step counter
         self.step_count += 1
 
-        # Episode ends if: agent got perfect score OR used all steps OR query is perfect
-        if reward.total == 1.0 or self.step_count >= self.task["max_steps"]:
+        # Episode ends if agent got near-perfect score OR used all steps
+        if reward.total >= 0.95 or self.step_count >= self.task["max_steps"]:
             self.done = True
 
-        # Build the next observation
         obs = self._build_observation()
 
-        # Info dict gives extra detail (not used for training, just for debugging)
         info = {
             "reward_breakdown": reward.dict(),
             "step": self.step_count,
@@ -122,10 +95,6 @@ class SQLDebuggerEnv:
 
         return obs, reward.total, self.done, info
 
-    # ─────────────────────────────────────────────────────────────
-    # state() — Snapshot of current state
-    # Required by OpenEnv spec.
-    # ─────────────────────────────────────────────────────────────
     def state(self) -> dict:
         """Returns the current state as a plain dictionary."""
         return {
@@ -141,17 +110,15 @@ class SQLDebuggerEnv:
             "total_attempts": len(self.episode_actions),
         }
 
-    # ─────────────────────────────────────────────────────────────
-    # _compute_reward() — The scoring engine
-    # PRIVATE method (underscore prefix = internal use only)
-    # ─────────────────────────────────────────────────────────────
     def _compute_reward(self, query: str) -> Reward:
         """
         Scores the agent's query with partial credit:
-          +0.3 if the query runs without any SQL error
-          +0.3 if columns match AND row count matches
-          +0.4 if every row matches exactly (perfect answer)
-        Total possible: 1.0
+          +0.30 if the query runs without any SQL error
+          +0.30 if columns match AND row count matches
+          +0.35 if every row matches exactly (perfect answer)
+          +0.04 speed bonus for solving in fewer steps
+        Total max: 0.99 (judges require strictly less than 1.0)
+        Total min: 0.01 (judges require strictly greater than 0.0)
         """
         runs_score = 0.0
         shape_score = 0.0
@@ -166,15 +133,13 @@ class SQLDebuggerEnv:
             agent_columns = [desc[0] for desc in cursor.description] if cursor.description else []
             agent_output = agent_rows
 
-            # Query ran without error → +0.3
-            runs_score = 0.3
-            message_parts.append("✓ Query runs without error (+0.3)")
+            runs_score = 0.30
+            message_parts.append("✓ Query runs without error (+0.30)")
 
         except sqlite3.Error as e:
-            # Query has a syntax or runtime error → 0 points
             message_parts.append(f"✗ Query failed with error: {str(e)} (+0.0)")
             return Reward(
-                total=0.0,
+                total=0.01,  # strictly greater than 0
                 runs_without_error=0.0,
                 shape_matches=0.0,
                 exact_match=0.0,
@@ -182,13 +147,13 @@ class SQLDebuggerEnv:
                 agent_output=None,
             )
 
-        # ── Step B: Get the EXPECTED output by running the correct query ──
+        # ── Step B: Get the EXPECTED output ──
         expected_cursor = self.db_connection.execute(self.task["correct_query"])
         expected_rows = expected_cursor.fetchall()
         expected_columns = self.task["expected_columns"]
         expected_row_count = self.task["expected_row_count"]
 
-        # ── Step C: Check if columns and row count match ──
+        # ── Step C: Check columns and row count ──
         columns_match = (
             len(agent_columns) == len(expected_columns) and
             [c.lower() for c in agent_columns] == [c.lower() for c in expected_columns]
@@ -196,8 +161,8 @@ class SQLDebuggerEnv:
         row_count_match = (len(agent_rows) == expected_row_count)
 
         if columns_match and row_count_match:
-            shape_score = 0.3
-            message_parts.append("✓ Columns and row count match (+0.3)")
+            shape_score = 0.30
+            message_parts.append("✓ Columns and row count match (+0.30)")
         else:
             if not columns_match:
                 message_parts.append(
@@ -208,20 +173,29 @@ class SQLDebuggerEnv:
                     f"✗ Row count mismatch: got {len(agent_rows)}, expected {expected_row_count} (+0.0)"
                 )
 
-        # ── Step D: Check if every single row matches exactly ──
-        # Sort both result sets so order doesn't matter
+        # ── Step D: Check exact row match ──
         if columns_match and row_count_match:
             agent_sorted = sorted(agent_rows)
             expected_sorted = sorted(expected_rows)
 
             if agent_sorted == expected_sorted:
-                exact_score = 0.4
-                message_parts.append("✓ All rows match exactly (+0.4)")
+                exact_score = 0.35
+                message_parts.append("✓ All rows match exactly (+0.35)")
             else:
                 message_parts.append("✗ Rows do not match exactly (+0.0)")
 
-        # ── Final score ──
-        total = round(runs_score + shape_score + exact_score, 4)
+        # ── Step E: Speed bonus — reward fewer steps ──
+        speed_bonus = 0.0
+        if exact_score > 0:
+            remaining_steps = self.task["max_steps"] - self.step_count
+            speed_bonus = round(0.04 * remaining_steps / self.task["max_steps"], 4)
+            message_parts.append(f"✓ Speed bonus (+{speed_bonus})")
+
+        # ── Final score — strictly between 0.01 and 0.99 ──
+        raw_total = runs_score + shape_score + exact_score + speed_bonus
+
+        # Clamp to strictly between 0.01 and 0.99
+        total = round(min(max(raw_total, 0.01), 0.99), 4)
 
         return Reward(
             total=total,
@@ -232,10 +206,6 @@ class SQLDebuggerEnv:
             agent_output=[list(row) for row in (agent_output or [])],
         )
 
-    # ─────────────────────────────────────────────────────────────
-    # _build_observation() — Assembles the Observation object
-    # Called after reset() and after every step()
-    # ─────────────────────────────────────────────────────────────
     def _build_observation(self) -> Observation:
         """Builds the Observation the agent receives."""
         return Observation(
@@ -253,10 +223,7 @@ class SQLDebuggerEnv:
         )
 
     def _get_schema_description(self) -> str:
-        """
-        Reads the actual table structure from SQLite and returns it as a
-        human-readable string. The agent needs this to understand the database.
-        """
+        """Returns database schema as human-readable string."""
         cursor = self.db_connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table';"
         )
@@ -272,10 +239,7 @@ class SQLDebuggerEnv:
         return "\n".join(schema_parts)
 
     def _get_error_message(self, query: Optional[str]) -> Optional[str]:
-        """
-        Tries running a query and returns the error message if it fails.
-        Returns None if the query runs fine (or if no previous attempt).
-        """
+        """Returns error message if query fails, None otherwise."""
         if not query:
             return None
         try:

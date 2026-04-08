@@ -152,6 +152,25 @@ def tasks():
     return {"tasks": task_list}
 
 
+@app.get("/info")
+def info():
+    """Returns environment metadata for OpenEnv compatibility."""
+    return {
+        "name": "sql-query-debugger",
+        "version": "1.0.0",
+        "description": "AI agents learn to debug broken SQL queries",
+        "domain": "sql-debugging",
+        "total_tasks": len(TASKS),
+        "difficulties": {
+            "easy": 2,
+            "medium": 2,
+            "hard": 2
+        },
+        "reward_range": [0.01, 0.99],
+        "action_schema": Action.schema(),
+    }
+
+
 # ════════════════════════════════════════════════════════
 # ENDPOINT 6: POST /grader
 # Runs the grader for the current episode.
