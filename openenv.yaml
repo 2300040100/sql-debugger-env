@@ -1,37 +1,6 @@
-name: sql-query-debugger
-version: "1.0.0"
-description: >
-  An environment where an AI agent debugs broken SQL queries.
-  Given a SQLite schema and a broken query, the agent must return
-  a corrected query that produces the expected output.
-domain: sql-debugging
-author: your-name-here
-tasks:
-  - id: task_syntax
-    name: "Fix syntax error"
-    difficulty: easy
-  - id: task_logic
-    name: "Fix logic bug"
-    difficulty: medium
-  - id: task_advanced
-    name: "Fix NULL and aggregation bug"
-    difficulty: hard
-  - id: task_boundary
-    name: "Fix boundary condition bug"
-    difficulty: easy
-  - id: task_groupby
-    name: "Fix missing GROUP BY"
-    difficulty: medium
-  - id: task_having
-    name: "Fix WHERE vs HAVING bug"
-    difficulty: hard
-observation_space:
-  type: object
-  description: "Broken SQL query, database schema, error message, expected output shape"
-action_space:
-  type: object
-  description: "The corrected SQL query string"
-reward:
-  type: float
-  range: [0.0, 1.0]
-  description: "Partial credit: +0.3 runs, +0.3 shape match, +0.4 exact rows match"
+spec_version: 1
+name: sql-debugger-env
+type: environment
+runtime: docker
+app: envs/sql_env/server/app.py
+port: 7860

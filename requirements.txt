@@ -3,4 +3,4 @@ uvicorn[standard]
 pydantic
 openai
 requests
-openenv
+openenv>=0.1.0
